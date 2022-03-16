@@ -22,8 +22,8 @@
 */
 
 const OutputSampleRate = 44100;
-let audioUrl_Other = "./audio/348378_other.ogg";
-let audioUrl_Vocal = "./audio/348378_gv.ogg";
+let audioUrl_Other = "./audio/348378_other.mp3";
+let audioUrl_Vocal = "./audio/348378_gv.mp3";
 
 window.AudioContext = window.AudioContext || window.webkitAudioContext;
 const AudioCtx = new AudioContext();
@@ -35,13 +35,11 @@ const VolumeFaderNode = [AudioCtx.createGain(),AudioCtx.createGain(),AudioCtx.cr
 //出力マージャー
 const StereoOutNode = AudioCtx.createChannelMerger(2);
 
-let channelMergerNode;
-let gainNode_Other;
-let gainNote_Vocal;
-
 let sampleSource;
 // 再生中のときはtrue
 let isPlaying = false;
+//再生用バッファ
+let PlayBuffer;
 
 // 音源を取得しAudioBuffer形式に変換して返す関数
 async function loadSample(audioUrl) {
@@ -73,10 +71,10 @@ async function getChMixBuffer(vocalBuf, otherBuf){
 }
 
 // AudioBufferをctxに接続し再生する関数
-function playSample(playBuffer) {
+function playSample() {
   sampleSource = AudioCtx.createBufferSource();
   // 変換されたバッファーを音源として設定
-  sampleSource.buffer = playBuffer;
+  sampleSource.buffer = PlayBuffer;
   //Splitterにつなげる
   sampleSource.connect(ChannelSplitterNode);
   
@@ -95,24 +93,34 @@ function playSample(playBuffer) {
   // 出力につなげる
   StereoOutNode.connect(AudioCtx.destination);
   //sampleSource.connect(AudioCtx.destination);
-  sampleSource.start();
+  sampleSource.start(0);
   isPlaying = true;
 }
 
+//再生ボタン
 document.querySelector("#play").addEventListener("click", async () => {
   // 再生中なら二重に再生されないようにする
   if (isPlaying) return;
+  
+  playSample();
+});
+
+//ロードボタン
+//(iOS対応。awaitとか全く挟まずにPlayボタンのスレッド直で再生を開始しないといけないので、
+//ロード工程を分ける必要がある)
+const LoadButton = document.querySelector("#load");
+LoadButton.addEventListener("click", async () => {
   //1.other読み込み（読み込み関数）
   const vocalBuffer = await loadSample(audioUrl_Vocal);
   //2.vocal読み込み（読み込み関数）
   const otherBuffer = await loadSample(audioUrl_Other);
   //再生用4chバッファ作成
-  const playBuffer = await getChMixBuffer(vocalBuffer,otherBuffer);
-
-  playSample(playBuffer);
+  PlayBuffer = await getChMixBuffer(vocalBuffer,otherBuffer);
+  //テキスト変更
+  LoadButton.textContent = "loaded";
 });
 
-// oscillatorを破棄し再生を停止する
+// ストップボタンoscillatorを破棄し再生を停止する
 document.querySelector("#stop").addEventListener("click", async () => {
   sampleSource?.stop();
   isPlaying = false;
