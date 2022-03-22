@@ -21,17 +21,27 @@
 余力あれば　プログレスバーもしくはぐるぐる
 */
 
-const OutputSampleRate = 44100;
-let audioUrl_Other = "./audio/348378_other.mp3";
-let audioUrl_Vocal = "./audio/348378_gv.mp3";
+const OutputSampleRate = 48000;
+let audioUrl_Other = "./audio/348378_other.ogg";
+let audioUrl_Vocal = "./audio/348378_gv.ogg";
 
 window.AudioContext = window.AudioContext || window.webkitAudioContext;
-const AudioCtx = new AudioContext();
-AudioCtx.sampleRate = OutputSampleRate
+const AudioCtx = new AudioContext({sampleRate:OutputSampleRate});
 //チャンネルスプリッター
 const ChannelSplitterNode = AudioCtx.createChannelSplitter(4);
 //4ch分のフェーダー
 const VolumeFaderNode = [AudioCtx.createGain(),AudioCtx.createGain(),AudioCtx.createGain(),AudioCtx.createGain()];
+//4ch分のディレイ
+const DelayNode = [AudioCtx.createDelay(),AudioCtx.createDelay(),AudioCtx.createDelay(),AudioCtx.createDelay()];
+
+//ディレイノードに渡す値（マイナスのオフセットができるようわざと最初に100ms遅らせるのを標準とする）
+const DelayFirstOffset = 0.1;
+function delayValue(delayTime){
+  trueValue = DelayFirstOffset + delayTime;
+  if(trueValue < 0){trueValue = 0;}
+  return trueValue;
+}
+
 //出力マージャー
 const StereoOutNode = AudioCtx.createChannelMerger(2);
 
@@ -46,7 +56,15 @@ async function loadSample(audioUrl) {
   const response = await fetch(audioUrl);
   const arrayBuffer = await response.arrayBuffer();
   // Web Audio APIで使える形式に変換
-  const audioBuffer = await AudioCtx.decodeAudioData(arrayBuffer);
+  let audioBuffer;
+  //oggの場合は専用のデコーダを使う（iOSがOggデコード出来ないため）
+  if(audioUrl.split('.').pop().toLowerCase() === "ogg"){
+    audioBuffer = await LoadOggBuffer(arrayBuffer,AudioCtx);
+    console.log("ogg load.");
+  }
+  else{
+    audioBuffer = await AudioCtx.decodeAudioData(arrayBuffer);
+  }
   return audioBuffer;
 }
 
@@ -84,11 +102,17 @@ function playSample() {
   ChannelSplitterNode.connect(VolumeFaderNode[2],2);
   ChannelSplitterNode.connect(VolumeFaderNode[3],3);
   
+  //Delayにつなげる
+  VolumeFaderNode[0].connect(DelayNode[0],0);
+  VolumeFaderNode[1].connect(DelayNode[1],0);
+  VolumeFaderNode[2].connect(DelayNode[2],0);
+  VolumeFaderNode[3].connect(DelayNode[3],0);
+  
   //2mix
-  VolumeFaderNode[0].connect(StereoOutNode,0,0);
-  VolumeFaderNode[1].connect(StereoOutNode,0,1);
-  VolumeFaderNode[2].connect(StereoOutNode,0,0);
-  VolumeFaderNode[3].connect(StereoOutNode,0,1);
+  DelayNode[0].connect(StereoOutNode,0,0);
+  DelayNode[1].connect(StereoOutNode,0,1);
+  DelayNode[2].connect(StereoOutNode,0,0);
+  DelayNode[3].connect(StereoOutNode,0,1);
 
   // 出力につなげる
   StereoOutNode.connect(AudioCtx.destination);
@@ -108,8 +132,21 @@ document.querySelector("#play").addEventListener("click", async () => {
 //ロードボタン
 //(iOS対応。awaitとか全く挟まずにPlayボタンのスレッド直で再生を開始しないといけないので、
 //ロード工程を分ける必要がある)
-const LoadButton = document.querySelector("#load");
-LoadButton.addEventListener("click", async () => {
+//const LoadButton = document.querySelector("#load");
+// LoadButton.addEventListener("click", async () => {
+//   //1.other読み込み（読み込み関数）
+//   const vocalBuffer = await loadSample(audioUrl_Vocal);
+//   //2.vocal読み込み（読み込み関数）
+//   const otherBuffer = await loadSample(audioUrl_Other);
+//   //再生用4chバッファ作成
+//   PlayBuffer = await getChMixBuffer(vocalBuffer,otherBuffer);
+//   //テキスト変更
+//   LoadButton.textContent = "loaded";
+// });
+
+//ロード処理
+//(iOS対応。awaitとか全く挟まずにPlayボタンのスレッド直で再生を開始しないといけないので、
+async function dataLoad(){
   //1.other読み込み（読み込み関数）
   const vocalBuffer = await loadSample(audioUrl_Vocal);
   //2.vocal読み込み（読み込み関数）
@@ -117,8 +154,9 @@ LoadButton.addEventListener("click", async () => {
   //再生用4chバッファ作成
   PlayBuffer = await getChMixBuffer(vocalBuffer,otherBuffer);
   //テキスト変更
-  LoadButton.textContent = "loaded";
-});
+  //LoadButton.textContent = "loaded";
+  return;
+}
 
 // ストップボタンoscillatorを破棄し再生を停止する
 document.querySelector("#stop").addEventListener("click", async () => {
@@ -136,6 +174,7 @@ function setVocalGainBySliderValue(){
   let vol = VocalGainSliderBar.value;
   VolumeFaderNode[0].gain.setValueAtTime(vol,AudioCtx.currentTime);
   VolumeFaderNode[1].gain.setValueAtTime(vol,AudioCtx.currentTime);
+  document.querySelector("#vocal_gain_value").innerText = vol;
 }
 
 //オケ音量調整
@@ -148,4 +187,38 @@ function setOtherGainBySliderValue(){
   let vol = OtherGainSliderBar.value;
   VolumeFaderNode[2].gain.setValueAtTime(vol,AudioCtx.currentTime);
   VolumeFaderNode[3].gain.setValueAtTime(vol,AudioCtx.currentTime);
+  document.querySelector("#other_gain_value").innerText = vol;
 }
+
+//ボーカル再生オフセット
+const VocalOffsetSliderBar = document.querySelector("#vocaloffset");
+setVocalOffsetBySliderValue();  //初期値反映
+VocalOffsetSliderBar.addEventListener("change", async () => {
+  setVocalOffsetBySliderValue();
+});
+function setVocalOffsetBySliderValue(){
+  let offsetms = VocalOffsetSliderBar.value;
+  DelayNode[0].delayTime.value = delayValue(offsetms / 1000.0);
+  DelayNode[1].delayTime.value = delayValue(offsetms / 1000.0);
+  document.querySelector("#vocal_offset_value").innerText = offsetms + "ms";
+}
+
+//オケ再生オフセット
+const OtherOffsetSliderBar = document.querySelector("#otheroffset");
+setOtherOffsetBySliderValue();  //初期値反映
+OtherOffsetSliderBar.addEventListener("change", async () => {
+  setOtherOffsetBySliderValue();
+});
+function setOtherOffsetBySliderValue(){
+  let offsetms = OtherOffsetSliderBar.value;
+  DelayNode[2].delayTime.value = delayValue(offsetms / 1000.0);
+  DelayNode[3].delayTime.value = delayValue(offsetms / 1000.0);
+  document.querySelector("#other_offset_value").innerText = offsetms + "ms";
+}
+
+// ローディング画面制御
+const loading = document.querySelector( '.loading' );
+window.addEventListener( 'load', async () => {
+  await dataLoad();
+  loading.classList.add( 'hide' );
+}, false );

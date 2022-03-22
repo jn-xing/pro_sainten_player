@@ -15,14 +15,42 @@
 <div id="header"><div id="head-inner"><h1>プロ採点プレイヤーデモ</h1>
 <p class="description">PC:Chrome,Edge / Mac:Safari / iOS:Safari / Android:Chrome</p></div>
 </div>
-
+<!-- loading画面 -->
+<div class="loading">
+	<span class="circle"></span>
+</div>
+<!-- プレイヤー -->
 <div id="contents">
-	<h1>テスト再生</h1>
-	<button id="load">load</button>
-	<button id="play">play</button>
-	<button id="stop">stop</button>
-	<input type="range" id="vocalgain" min="0" max="1" step="0.05"/>
-	<input type="range" id="othergain" min="0" max="1" step="0.05"/>
+		<h1>テスト再生</h1>
+		<br>
+		<!-- <button id="load">load</button> -->
+		<ul>
+			<li>
+				<button id="play">Play</button>
+				<button id="stop">Stop</button>
+			</li>
+			<br>
+			<li>
+				<p><b>Vocal gain</b></p>
+				<input type="range" id="vocalgain" min="0" max="1" step="0.05"/>
+				<div id="vocal_gain_value"></div>
+				</li>
+			<li>
+				<p><b>Other gain</b></p>
+				<input type="range" id="othergain" min="0" max="1" step="0.05"/>
+				<div id="other_gain_value"></div>
+			</li>
+			<li>
+				<p><b>Vocal offset</b></p>
+				<input type="range" id="vocaloffset" min="-100" max="100" step="10"/>
+				<div id="vocal_offset_value"></div>
+			</li>
+			<li>
+				<p><b>Other offset</b></p>
+				<input type="range" id="otheroffset" min="-100" max="100" step="10"/>
+				<div id="other_offset_value"></div>
+			</li>
+		</ul>
 </div>
 
 <!-- <div id="footer">Copyright XING INC. All Rights Reserved.</div> -->
@@ -30,3 +58,5 @@
 </html>
 
 <script src="./main.js"></script>
+<script src="./LoadOggBuffer.js"></script>
+<script src="./stbvorbis.js"></script>
